@@ -1,0 +1,296 @@
+package com.banking.discrete_ccp;
+
+import javafx.application.Application;
+import javafx.scene.Scene;
+import javafx.scene.control.Button;
+import javafx.scene.control.Label;
+import javafx.scene.layout.GridPane;
+import javafx.scene.layout.VBox;
+import javafx.stage.Stage;
+import javafx.geometry.Pos;
+import javafx.scene.text.Font;
+import javafx.scene.control.ChoiceBox;
+
+// Main class to run the Tic-Tac-Toe game with a JavaFX GUI
+public class TicTacToe extends Application {
+
+    // Represents the 3x3 game board
+    private char[][] board = new char[3][3];
+
+    // Represents the current player ('X' for Human, 'O' for AI)
+    private char currentPlayer;
+
+    // UI elements
+    private Button[][] buttons = new Button[3][3];
+    private Label messageLabel = new Label("Choose who goes first!");
+    private ChoiceBox<String> choiceBox = new ChoiceBox<>();
+
+    @Override
+    public void start(Stage primaryStage) {
+        // Set up the game board UI
+        GridPane gridPane = new GridPane();
+        gridPane.setAlignment(Pos.CENTER);
+        gridPane.setHgap(5);
+        gridPane.setVgap(5);
+
+        // Create the buttons for the board
+        for (int i = 0; i < 3; i++) {
+            for (int j = 0; j < 3; j++) {
+                buttons[i][j] = new Button();
+                buttons[i][j].setFont(new Font(20));
+                buttons[i][j].setPrefSize(100, 100);
+                // Attach an event handler to each button
+                final int row = i;
+                final int col = j;
+                buttons[i][j].setOnAction(e -> handleButtonClick(row, col));
+                gridPane.add(buttons[i][j], j, i);
+            }
+        }
+
+        // Set up the message label
+        messageLabel.setFont(new Font(24));
+
+        // Create the choice box for player order
+        choiceBox.getItems().addAll("I go first", "Computer goes first");
+        choiceBox.setValue("I go first"); // Set a default value
+
+        // Create the reset and start buttons
+        Button startGameButton = new Button("Start Game");
+        startGameButton.setOnAction(e -> startGame());
+        startGameButton.setPrefSize(150, 40);
+
+        Button resetButton = new Button("Play Again");
+        resetButton.setOnAction(e -> resetGame());
+        resetButton.setPrefSize(150, 40);
+
+        VBox root = new VBox(20, messageLabel, choiceBox, startGameButton, gridPane, resetButton);
+        root.setAlignment(Pos.CENTER);
+
+        // Initially disable the board until the game starts
+        disableAllButtons();
+
+        // Create and display the scene
+        Scene scene = new Scene(root, 400, 500);
+        primaryStage.setTitle("Tic-Tac-Toe AI");
+        primaryStage.setScene(scene);
+        primaryStage.show();
+    }
+
+    // Starts the game based on the user's choice
+    private void startGame() {
+        resetBoard();
+        if (choiceBox.getValue().equals("I go first")) {
+            currentPlayer = 'X';
+            messageLabel.setText("You are 'X', Computer is 'O'");
+        } else {
+            currentPlayer = 'O';
+            messageLabel.setText("Computer is thinking...");
+            // Trigger the AI's first move
+            new Thread(() -> {
+                try {
+                    Thread.sleep(1000); // Simulate thinking time
+                    javafx.application.Platform.runLater(() -> {
+                        getAIMove();
+                        checkGameStatus();
+                    });
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }).start();
+        }
+    }
+
+    // Resets the board without changing the player turn message
+    private void resetBoard() {
+        for (int i = 0; i < 3; i++) {
+            for (int j = 0; j < 3; j++) {
+                board[i][j] = ' ';
+                buttons[i][j].setText("");
+                buttons[i][j].setDisable(false);
+            }
+        }
+    }
+
+    // Full reset for the "Play Again" button
+    private void resetGame() {
+        resetBoard();
+        disableAllButtons();
+        messageLabel.setText("Choose who goes first!");
+    }
+
+    // Handles a button click by the human player
+    private void handleButtonClick(int row, int col) {
+        if (board[row][col] == ' ' && currentPlayer == 'X') {
+            board[row][col] = currentPlayer;
+            buttons[row][col].setText(String.valueOf(currentPlayer));
+            buttons[row][col].setDisable(true);
+
+            checkGameStatus();
+
+            if (!isGameFinished()) {
+                switchPlayer();
+                messageLabel.setText("Computer is thinking...");
+                // Use a separate thread to not block the UI while the AI is thinking
+                new Thread(() -> {
+                    try {
+                        Thread.sleep(1000); // Simulate thinking time
+                        javafx.application.Platform.runLater(() -> {
+                            getAIMove();
+                            checkGameStatus();
+                        });
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                }).start();
+            }
+        }
+    }
+
+    // Determines the best move for the AI using the Minimax algorithm
+    private void getAIMove() {
+        class Move {
+            int row, col;
+            Move(int row, int col) {
+                this.row = row;
+                this.col = col;
+            }
+        }
+
+        int bestScore = Integer.MIN_VALUE;
+        Move bestMove = new Move(-1, -1);
+
+        for (int i = 0; i < 3; i++) {
+            for (int j = 0; j < 3; j++) {
+                if (board[i][j] == ' ') {
+                    board[i][j] = 'O';
+                    int score = minimax(false);
+                    board[i][j] = ' '; // Undo the move
+                    if (score > bestScore) {
+                        bestScore = score;
+                        bestMove.row = i;
+                        bestMove.col = j;
+                    }
+                }
+            }
+        }
+
+        // Place the AI's best move and update the UI
+        board[bestMove.row][bestMove.col] = 'O';
+        buttons[bestMove.row][bestMove.col].setText("O");
+        buttons[bestMove.row][bestMove.col].setDisable(true);
+        switchPlayer();
+    }
+
+    // The recursive Minimax algorithm
+    private int minimax(boolean isMaximizing) {
+        char winner = checkWinner();
+        if (winner != ' ') {
+            if (winner == 'X') return -10;
+            if (winner == 'O') return 10;
+            return 0; // Draw
+        }
+        if (isBoardFull()) return 0;
+
+        if (isMaximizing) {
+            int bestScore = Integer.MIN_VALUE;
+            for (int i = 0; i < 3; i++) {
+                for (int j = 0; j < 3; j++) {
+                    if (board[i][j] == ' ') {
+                        board[i][j] = 'O';
+                        bestScore = Math.max(bestScore, minimax(false));
+                        board[i][j] = ' ';
+                    }
+                }
+            }
+            return bestScore;
+        } else {
+            int bestScore = Integer.MAX_VALUE;
+            for (int i = 0; i < 3; i++) {
+                for (int j = 0; j < 3; j++) {
+                    if (board[i][j] == ' ') {
+                        board[i][j] = 'X';
+                        bestScore = Math.min(bestScore, minimax(true));
+                        board[i][j] = ' ';
+                    }
+                }
+            }
+            return bestScore;
+        }
+    }
+
+    // Checks for a winner and updates the UI message
+    private void checkGameStatus() {
+        char winner = checkWinner();
+        if (winner != ' ') {
+            if (winner == 'X') {
+                messageLabel.setText("You win!");
+            } else {
+                messageLabel.setText("Computer wins!");
+            }
+            disableAllButtons();
+        } else if (isBoardFull()) {
+            messageLabel.setText("It's a draw!");
+            disableAllButtons();
+        }
+    }
+
+    // Helper method to check if the game is over
+    private boolean isGameFinished() {
+        return checkWinner() != ' ' || isBoardFull();
+    }
+
+    // Checks if a player has won the game
+    private char checkWinner() {
+        // Check rows
+        for (int i = 0; i < 3; i++) {
+            if (board[i][0] != ' ' && board[i][0] == board[i][1] && board[i][1] == board[i][2]) {
+                return board[i][0];
+            }
+        }
+        // Check columns
+        for (int j = 0; j < 3; j++) {
+            if (board[0][j] != ' ' && board[0][j] == board[1][j] && board[1][j] == board[2][j]) {
+                return board[0][j];
+            }
+        }
+        // Check diagonals
+        if (board[0][0] != ' ' && board[0][0] == board[1][1] && board[1][1] == board[2][2]) {
+            return board[0][0];
+        }
+        if (board[0][2] != ' ' && board[0][2] == board[1][1] && board[1][1] == board[2][0]) {
+            return board[0][2];
+        }
+
+        return ' '; // No winner
+    }
+
+    // Checks if all cells on the board are filled
+    private boolean isBoardFull() {
+        for (int i = 0; i < 3; i++) {
+            for (int j = 0; j < 3; j++) {
+                if (board[i][j] == ' ') {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    // Switches the current player
+    private void switchPlayer() {
+        currentPlayer = (currentPlayer == 'X') ? 'O' : 'X';
+    }
+
+    // Disables all buttons on the board
+    private void disableAllButtons() {
+        for (int i = 0; i < 3; i++) {
+            for (int j = 0; j < 3; j++) {
+                buttons[i][j].setDisable(true);
+            }
+        }
+    }
+
+    public static void main(String[] args) {
+        launch(args);
+    }
+}
